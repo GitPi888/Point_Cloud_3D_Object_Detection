@@ -79,8 +79,7 @@ def farthest_point_sample(xyz, npoint):
         centroids[:,i]=farthest
         centroid=xyz[batch_indices,farthest,:].view(B,1,3)
         dist=torch.sum((xyz-centroid)**2,dim=-1)
-        mask=dist<distance
-        distance[mask]=dist[mask]
+        distance = torch.min(distance, dist)
         farthest=torch.max(distance,dim=-1)[1]
     return centroids
 
@@ -141,7 +140,6 @@ def sample_and_group(npoint, radius, nsample, xyz, points, returnfps=False):
     #     new_points = grouped_xyz_norm
     # if returnfps:
     #     return new_xyz, new_points, grouped_xyz, fps_idx
-
     if returnfps:
         return new_xyz, new_points, grouped_xyz, grouped_points
     else:
@@ -179,7 +177,8 @@ class PointNetSetAbstraction(nn.Module):
         for out_channel in mlp:
             self.mlp_convs.append(nn.Conv2d(last_channel, out_channel, 1))
             self.mlp_bns.append(nn.BatchNorm2d(out_channel))
-            last_channel=out_channel
+            last_channel=out_channel\
+    
         self.group_all=group_all
         self.affine_alpha_first = nn.Parameter(torch.ones([1, 1, 1, in_channel//2]))
         self.affine_beta_first = nn.Parameter(torch.zeros([1, 1, 1, in_channel//2]))
@@ -216,7 +215,8 @@ class PointNetSetAbstraction(nn.Module):
         if self.group_all:
             new_xyz,new_points=sample_and_group_all(xyz,points)
         else:
-            new_xyz,new_points,grouped_xyz,grouped_points=sample_and_group(self.npoint,self.radius,self.nsample,xyz,points,returnfps=True)
+            new_xyz,new_points,grouped_xyz,grouped_points=\
+                sample_and_group(self.npoint,self.radius,self.nsample,xyz,points,returnfps=True)
         
         # new_xyz: sampled points position data, [B, npoint, C]
         # new_points: sampled points data, [B, npoint, nsample, C] # NOTE: C+D -> C
@@ -390,3 +390,42 @@ class GLUBlock(nn.Module):
     
     def forward(self, x):
         return self.linear_main(x) * torch.sigmoid(self.linear_gate(x))
+    
+class LightHead(nn.Module):
+    def __init__(self, in_dim, num_classes):
+        super().__init__()
+        self.global_pool = nn.AdaptiveMaxPool1d(1)
+        self.conv1 = nn.Conv1d(in_dim, 128, 1)
+        self.conv3 = nn.Conv1d(128, num_classes, 1)
+        
+
+        self.bn1 = nn.BatchNorm1d(128)
+        self.bn2 = nn.BatchNorm1d(256)
+
+        self.dropout1 = nn.Dropout(0.3)
+        self.dropout2 = nn.Dropout(0.3)
+        
+    def forward(self, x):
+        x = self.global_pool(x)
+        x = self.dropout1(self.bn1(self.conv1(x)))
+        x = self.dropout2(self.bn2(self.conv2(x)))
+        x= x.squeeze(dim=-1)
+        return x
+    
+class TransformerHead(nn.Module):
+    def __init__(self, in_channels, num_classes, num_heads=4):
+        super().__init__()
+        self.proj = nn.Linear(in_channels, in_channels)
+        self.transformer = nn.TransformerEncoderLayer(
+            d_model=in_channels, nhead=num_heads, batch_first=True
+        )
+        self.classifier = nn.Linear(in_channels, num_classes)
+
+    def forward(self, x):
+        x = self.proj(x.transpose(1, 2))  # [B, N, C]
+        x = self.transformer(x)
+        x = x.mean(dim=1)  # Global token
+        return self.classifier(x)
+
+
+        
