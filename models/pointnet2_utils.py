@@ -396,11 +396,11 @@ class LightHead(nn.Module):
         super().__init__()
         self.global_pool = nn.AdaptiveMaxPool1d(1)
         self.conv1 = nn.Conv1d(in_dim, 128, 1)
-        self.conv3 = nn.Conv1d(128, num_classes, 1)
+        self.conv2 = nn.Conv1d(128, num_classes, 1)
         
 
         self.bn1 = nn.BatchNorm1d(128)
-        self.bn2 = nn.BatchNorm1d(256)
+        self.bn2 = nn.BatchNorm1d(num_classes)
 
         self.dropout1 = nn.Dropout(0.3)
         self.dropout2 = nn.Dropout(0.3)
