@@ -10,3 +10,4 @@ tqdm
 numpy
 glob2
 prettytable
+seaborn
